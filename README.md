@@ -1,111 +1,159 @@
 # Hypermerge
 
-Hypermerge a proof of concept library for using the hypercore / hyperprotocol
-tools from the DAT ecosystem to enable peer to peer communication between
-automerge data stores.
+Hypermerge is a proof-of-concept library for using the [Hypercore](hypercore) tools from the DAT ecosystem to enable peer to peer communication between [Automerge](automerge) data stores.
 
-If successful this project would provide a way to have apps data sets that are
-conflict free and offline first (thanks to CRDT's) and serverless (thanks to
-hypercore/DAT).
+This project provides a way for applications to use datasets that are conflict-free and offline-first (thanks to CRDTs) and serverless (thanks to Hypercore/DAT).
 
-While the DAT community has done a lot of work to secure their tool set, zero
-effort has been made with hypermerge itself to deal with security and privacy
-concerns.  Due to the secure nature of the tools its built upon a properly
-audited and secure version of this library would be possible in the future.
+Hypermerge doesn't deal with security or privacy directly. Due to the secure nature of the tools it is built on, a properly audited and secure version of this library would be possible in the future.
 
-## How it works
 
-## Concepts
+## Usage
 
-The base object you make with hypermerge is a Repo.  A repo is responsible for
-managing documents and replicating to peers.
+### Basic example
 
-### Basic Setup (Serverless or with a Server)
 
-```ts
-import { Repo } from "hypermerge"
 
-const storage = require("random-access-file")
-const path = ".data"
+```js
 
-const repo = new Repo({ path, storage })
+  import { Repo } from 'hypermerge'
 
-// DAT's discovery swarm or truly serverless discovery
-const DiscoverySwarm = require("discovery-swarm");
+  const ram = require('random-access-memory')
+
+  // create a new repo, stored in memory 
+  const repo = new Repo({ storage: ram })
+
+  // create new document and get an identifier
+  const url = repo.create({ hello: 'world' })
+
+  // read the document once
+  repo.doc(url, (doc) => {
+    console.log(doc) // { hello: 'world' }
+  })
+
+  repo.change(url, (doc) => {
+    // here we can treat the doc as a plain old javacript object; changes 
+    // will be added to an internal append-only log and replicated to peers
+    doc.foo = 'bar'
+  })
+
+  repo.doc(url, (doc) => {
+    console.log(doc) // { hello: 'world', foo: 'bar' }
+  })
+
+  // log all changes to the document
+  repo.watch(url, (doc) => {
+    console.log(doc)
+  })
+```
+
+### Replication
+
+```js
+// DAT's discovery swarm 
+const DiscoverySwarm = require('discovery-swarm')
 const defaults = require('dat-swarm-defaults')
-const discovery = new DiscoverySwarm(defaults({stream: repo.stream, id: repo.id }));
+const discovery = new DiscoverySwarm(defaults({stream: repo.stream, id: repo.id }))
 
 repo.replicate(discovery)
 ```
 
-### Create / Edit / View / Delete a document
+### Repos on different machines
 
-```ts
+```js
+repoA.replicate(discovery)
 
-  const url = repo.create({ hello: "world" })
+const docUrl = repoA.create({ numbers: [2, 3, 4]})
+// docUrl now needs to be communicated to Machine B to share access to the document
 
-  repo.doc<any>(url, (doc) => {
-    console.log(doc) // { hello: "world" }
-  })
-
-  // this is an automerge change function - see automerge for more info
-  // basically you get to treat the state as a plain old javacript object
-  // operations you make will be added to an internal append only log and
-  // replicated to peers
-
-  repo.change(url, (state:any) => {
-    state.foo = "bar"
-  })
-
-  repo.doc<any>(url, (doc) => {
-    console.log(doc) // { hello: "world", foo: "bar" }
-  })
-
-  // to watch a document that changes over time ...
-  const handle = repo.watch(url, (doc:any) => {
-    console.log(doc)
-    if (doc.foo === "bar") {
-      handle.close()
-    }
-  })
-```
-
-### Two repos on different machines
-
-```ts
-
-const docUrl = repoA.create({ numbers: [ 2,3,4 ]})
-
-// this will block until the state has replicated to machine B
-
-repoA.watch<MyDoc>(docUrl, state => {
-  console.log("RepoA", state)
-  // { numbers: [2,3,4] } 
-  // { numbers: [2,3,4,5], foo: "bar" }
-  // { numbers: [2,3,4,5], foo: "bar" } // (local changes repeat)
-  // { numbers: [1,2,3,4,5], foo: "bar", bar: "foo" }
+// watch changes from machine A
+repoA.watch(docUrl, state => {
+  console.log('RepoA', state)
 })
 
-repoB.watch<MyDoc>(docUrl, state => {
-  console.log("RepoB", state)
-  // { numbers: [1,2,3,4,5], foo: "bar", bar: "foo" }
+// watch changes from machine B
+repoB.watch(docUrl, state => {
+  console.log('RepoB', state)
 })
 
-
-repoA.change<MyDoc>(docUrl, (state) => {
+// make two changes on machine A
+repoA.change(docUrl, (state) => {
   state.numbers.push(5)
-  state.foo = "bar"
+  state.foo = 'bar'
 })
 
+// make a change on machine B
 repoB.change<MyDoc>(docUrl, (state) => {
-  state.numbers.unshift(1)
-  state.bar = "foo"
+  state.bar = 'foo'
 })
 
+// output on machine A:
+//   { numbers: [2, 3, 4] } 
+//   { numbers: [2, 3, 4, 5], foo: 'bar' }
+//   { numbers: [2, 3, 4, 5], foo: 'bar' } // (local changes repeat)
+//   { numbers: [2, 3, 4, 5], foo: 'bar', bar: 'foo' }
+
+// output on machine B:
+//   { numbers: [1,2,3,4,5], foo: 'bar', bar: 'foo' }
+
 ```
 
-### Accessing Files
 
-```ts
+## API
+
+### `new Repo([options]`)
+
+The base object you make with hypermerge is an instance of `Repo`, which is responsible for managing a set of documents and replicating to peers.
+
+```js
+const repo = new Repo({storage: ram})
 ```
 
+
+### `repo.create([initialState])` 
+
+Creates a new document, optionally based on an initial value.
+
+```js
+const id = repo.create({ hello: 'world' })
+```
+
+Each document is identified by a globally unique identifier. 
+
+### `repo.watch(id, callback)` 
+
+Gives read-only access to a document's state as it changes. The callback you provide is fired each time the document is modified. Note a handle can only have one subscriber - if you need more, you need to open another handle. 
+
+```js
+repo.watch(url, (doc) => {
+  console.log(doc)
+})
+```
+
+### `repo.doc(id, callback)` 
+
+Gives you read-only access to the document's state at a single point in time. 
+
+```js  
+repo.doc(id, (doc) => {
+  console.log(doc) 
+})
+```
+
+### `repo.change(id, callback)` 
+
+Gives you access to an mutable version of the document. 
+
+```js
+repo.change(url, (doc) => {
+  doc.foo = 'bar'
+})
+```
+
+Within the callback, you can treat the document as a plain old JavaScript object. Automerge takes care of detecting changes and generating a read-only log for storage and replication. [See the Automerge docs](https://github.com/automerge/automerge#manipulating-and-inspecting-state) for details on how this works. 
+
+
+
+
+
+[automerge]: https://github.com/automerge/automerge
+[hypercore]: https://github.com/mafintosh/hypercore

@@ -12,7 +12,6 @@ Hypermerge doesn't deal with security or privacy directly. Due to the secure nat
 ### Basic example
 
 
-
 ```js
 
   import { Repo } from 'hypermerge'
@@ -48,22 +47,42 @@ Hypermerge doesn't deal with security or privacy directly. Due to the secure nat
 
 ### Replication
 
-```js
-// DAT's discovery swarm 
-const DiscoverySwarm = require('discovery-swarm')
-const defaults = require('dat-swarm-defaults')
-const discovery = new DiscoverySwarm(defaults({stream: repo.stream, id: repo.id }))
+> TODO: explain this
 
-repo.replicate(discovery)
+```js
+const Client = require('discovery-cloud-client')
+const defaults = require('dat-swarm-defaults')
+
+const client = new Client(defaults({stream: repo.stream, id: repo.id }))
+
+repo.replicate(client)
 ```
 
 ### Repos on different machines
 
+> TODO: explain this
+
 ```js
-repoA.replicate(discovery)
+const repoA = new Repo({ storage: ram })
+const repoB = new Repo({ storage: ram })
+
+const clientA = new Client({
+  id: repoA.id,
+  stream: repoA.stream,
+  url: "wss://discovery-cloud.glitch.me",
+})
+
+const clientB = new Client({
+  id: repoB.id,
+  stream: repoB.stream,
+  url: "wss://discovery-cloud.glitch.me",
+})
+
+repoA.replicate(clientA)
+repoB.replicate(clientB)
 
 const docUrl = repoA.create({ numbers: [2, 3, 4]})
-// docUrl now needs to be communicated to Machine B to share access to the document
+// in practice, docUrl would now need to be communicated to Machine B to share access to the document
 
 // watch changes from machine A
 repoA.watch(docUrl, state => {
@@ -151,6 +170,30 @@ repo.change(url, (doc) => {
 
 Within the callback, you can treat the document as a plain old JavaScript object. Automerge takes care of detecting changes and generating a read-only log for storage and replication. [See the Automerge docs](https://github.com/automerge/automerge#manipulating-and-inspecting-state) for details on how this works. 
 
+-------
+
+### API documentation checklist
+
+#### Repo
+
+- [ ] repo.back
+- [x] repo.change
+- [ ] repo.close
+- [x] repo.create
+- [ ] repo.destroy
+- [x] repo.doc
+- [ ] repo.fork
+- [ ] repo.front
+- [ ] repo.id
+- [ ] repo.materialize
+- [ ] repo.merge
+- [ ] repo.meta
+- [ ] repo.open
+- [ ] repo.readFile
+- [ ] repo.replicate
+- [ ] repo.stream
+- [x] repo.watch
+- [ ] repo.writeFile
 
 
 
